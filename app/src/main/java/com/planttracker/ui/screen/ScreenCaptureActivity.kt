@@ -27,6 +27,7 @@ class ScreenCaptureActivity : ComponentActivity() {
     companion object {
         const val REQUEST_MEDIA_PROJECTION = 1001
         const val TAG = "ScreenCaptureActivity"
+        const val ACTION_PLANT_RECOGNIZED = "com.planttracker.PLANT_RECOGNIZED"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -47,6 +47,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.planttracker.data.model.Plant
 import com.planttracker.data.repository.PlantRepository
+import com.planttracker.ui.screen.ScreenCaptureActivity
 import com.planttracker.ui.theme.PlantTrackerTheme
 import com.planttracker.util.TimeParser
 import dagger.hilt.android.AndroidEntryPoint
@@ -90,7 +91,7 @@ class FloatingWindowService : Service() {
     private fun registerPlantRecognizedReceiver() {
         plantRecognizedReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                if (intent?.action == "com.planttracker.PLANT_RECOGNIZED") {
+                if (intent?.action == ScreenCaptureActivity.ACTION_PLANT_RECOGNIZED) {
                     val plantName = intent.getStringExtra("plant_name")
                     val matureTime = intent.getIntExtra("mature_time", 0)
                     android.util.Log.d("FloatingWindowService", "收到植物识别广播: $plantName, 成熟时间: ${matureTime}分钟")
@@ -104,7 +105,7 @@ class FloatingWindowService : Service() {
                 }
             }
         }
-        val filter = IntentFilter("com.planttracker.PLANT_RECOGNIZED")
+        val filter = IntentFilter(ScreenCaptureActivity.ACTION_PLANT_RECOGNIZED)
         registerReceiver(plantRecognizedReceiver, filter)
     }
 

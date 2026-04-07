@@ -21,6 +21,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.planttracker.R
 import com.planttracker.ui.MainActivity
+import com.planttracker.ui.screen.ScreenCaptureActivity
 import com.planttracker.util.OcrHelper
 import com.planttracker.util.OcrResult
 import kotlinx.coroutines.CoroutineScope
@@ -47,7 +48,6 @@ class ScreenCaptureService : Service() {
         const val ACTION_STOP_CAPTURE = "STOP_CAPTURE"
         const val EXTRA_RESULT_CODE = "RESULT_CODE"
         const val EXTRA_RESULT_DATA = "RESULT_DATA"
-        const val ACTION_PLANT_RECOGNIZED = "com.planttracker.PLANT_RECOGNIZED"
         const val NOTIFICATION_CHANNEL_ID = "screen_capture_channel"
         const val NOTIFICATION_ID = 1001
 
@@ -163,7 +163,7 @@ class ScreenCaptureService : Service() {
     }
 
     private fun sendResultBroadcast(ocrResult: OcrResult) {
-        val intent = Intent(ACTION_PLANT_RECOGNIZED).apply {
+        val intent = Intent(ScreenCaptureActivity.ACTION_PLANT_RECOGNIZED).apply {
             putExtra("raw_text", ocrResult.rawText)
             putExtra("nickname", ocrResult.nickname)
             putExtra("mature_time_text", ocrResult.matureTimeText)
