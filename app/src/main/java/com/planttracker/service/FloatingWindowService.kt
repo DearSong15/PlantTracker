@@ -4,8 +4,10 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -72,6 +74,9 @@ class FloatingWindowService : Service() {
     private var initialTouchX = 0f
     private var initialTouchY = 0f
 
+    // 广播接收器
+    private var plantRecognizedReceiver: BroadcastReceiver? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -79,6 +84,28 @@ class FloatingWindowService : Service() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         startForegroundService()
         createFloatingWindow()
+        registerPlantRecognizedReceiver()
+    }
+
+    private fun registerPlantRecognizedReceiver() {
+        plantRecognizedReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == "com.planttracker.PLANT_RECOGNIZED") {
+                    val plantName = intent.getStringExtra("plant_name")
+                    val matureTime = intent.getIntExtra("mature_time", 0)
+                    android.util.Log.d("FloatingWindowService", "收到植物识别广播: $plantName, 成熟时间: ${matureTime}分钟")
+                    // 数据会自动通过 repository.getActivePlants() 刷新
+                    // 可以在这里添加一个 Toast 提示
+                    android.widget.Toast.makeText(
+                        this@FloatingWindowService,
+                        "已添加: $plantName",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+        val filter = IntentFilter("com.planttracker.PLANT_RECOGNIZED")
+        registerReceiver(plantRecognizedReceiver, filter)
     }
 
     private fun startForegroundService() {
@@ -171,6 +198,7 @@ class FloatingWindowService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         floatView?.let { windowManager.removeView(it) }
+        plantRecognizedReceiver?.let { unregisterReceiver(it) }
         serviceScope.cancel()
     }
 
