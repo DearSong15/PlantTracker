@@ -66,5 +66,12 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- 截图前台服务 -->
+        <service
+            android:name=".service.ScreenCaptureService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
     </application>
 </manifest>

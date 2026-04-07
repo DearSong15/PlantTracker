@@ -2,52 +2,36 @@ package com.planttracker.ui.screen
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Bitmap
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import com.planttracker.util.OcrHelper
-import com.planttracker.util.OcrResult
+import com.planttracker.service.ScreenCaptureService
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
- * 透明截图Activity
+ * 截图权限请求Activity
  * 
- * 修复后的设计：
- * 1. 在Activity存活期间完成截图，不依赖finish后的延迟操作
- * 2. 截图和OCR在后台快速完成
- * 3. 完成后立即finish，通过广播发送结果
+ * 流程：
+ * 1. 启动Activity（透明）
+ * 2. 请求截图权限
+ * 3. 用户点击"立即开始"后，启动前台服务执行截图
+ * 4. 立即finish，让用户回到农场界面
+ * 5. 前台服务在后台完成截图和识别
+ * 6. 通过广播发送结果
  */
 @AndroidEntryPoint
 class ScreenCaptureActivity : ComponentActivity() {
 
-    private lateinit var ocrHelper: OcrHelper
-    private var mediaProjectionResultCode: Int = 0
-    private var mediaProjectionData: Intent? = null
-    
-    // 使用独立的协程作用域
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
     companion object {
         const val REQUEST_MEDIA_PROJECTION = 1001
         const val TAG = "ScreenCaptureActivity"
-        const val ACTION_PLANT_RECOGNIZED = "com.planttracker.PLANT_RECOGNIZED"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 关键：不调用setContentView，保持完全透明
-        
-        ocrHelper = OcrHelper()
+        // 不调用setContentView，保持完全透明
 
         // 请求截图权限
         val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -60,17 +44,11 @@ class ScreenCaptureActivity : ComponentActivity() {
         
         if (requestCode == REQUEST_MEDIA_PROJECTION) {
             if (resultCode == Activity.RESULT_OK && data != null) {
-                // 保存结果
-                mediaProjectionResultCode = resultCode
-                mediaProjectionData = data
+                // 启动前台服务执行截图
+                ScreenCaptureService.start(this, resultCode, data)
                 
-                // 延迟一点再截图，确保Activity完全可见
-                // 这是Android 10+的要求：MediaProjection必须在Activity可见时创建
-                Handler(Looper.getMainLooper()).postDelayed({
-                    scope.launch {
-                        performCaptureAndFinish()
-                    }
-                }, 300)
+                // 立即finish，让用户回到农场界面
+                finishWithNoAnimation()
                 
             } else {
                 // 用户取消
@@ -79,133 +57,6 @@ class ScreenCaptureActivity : ComponentActivity() {
                 finishWithNoAnimation()
             }
         }
-    }
-
-    private fun performCaptureAndFinish() {
-        try {
-            Log.d(TAG, "开始截图流程...")
-            
-            // 在主线程同步截图（Android 10+要求）
-            val bitmap = captureScreenWithMediaProjection()
-
-            if (bitmap != null) {
-                Log.d(TAG, "截图成功，开始OCR识别...")
-                
-                // 在后台线程进行OCR
-                scope.launch(Dispatchers.Default) {
-                    val ocrResult = ocrHelper.recognizeText(bitmap)
-                    
-                    Log.d(TAG, "OCR结果: ${ocrResult.nickname}, ${ocrResult.matureTimeText}")
-                    
-                    // 发送广播通知结果
-                    sendResultBroadcast(ocrResult)
-                    
-                    // 回到主线程显示Toast
-                    withContext(Dispatchers.Main) {
-                        val message = if (ocrResult.nickname != null) {
-                            "识别成功: ${ocrResult.nickname}"
-                        } else {
-                            "未能识别植物信息"
-                        }
-                        Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
-                        
-                        // 清理资源并关闭
-                        ocrHelper.release()
-                        finishWithNoAnimation()
-                    }
-                }
-            } else {
-                Log.e(TAG, "截图失败")
-                Toast.makeText(this, "截图失败", Toast.LENGTH_SHORT).show()
-                ocrHelper.release()
-                finishWithNoAnimation()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "截图识别失败", e)
-            Toast.makeText(this, "识别出错: ${e.message}", Toast.LENGTH_SHORT).show()
-            ocrHelper.release()
-            finishWithNoAnimation()
-        }
-    }
-
-    private fun captureScreenWithMediaProjection(): Bitmap? {
-        val data = mediaProjectionData ?: return null
-        
-        val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        val mediaProjection = mediaProjectionManager.getMediaProjection(mediaProjectionResultCode, data)
-            ?: return null
-
-        val displayMetrics = resources.displayMetrics
-        val width = displayMetrics.widthPixels
-        val height = displayMetrics.heightPixels
-        val density = displayMetrics.densityDpi
-
-        val imageReader = android.media.ImageReader.newInstance(
-            width, height, 
-            android.graphics.PixelFormat.RGBA_8888, 
-            1
-        )
-
-        val virtualDisplay = mediaProjection.createVirtualDisplay(
-            "ScreenCapture",
-            width, height, density,
-            android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader.surface, null, null
-        )
-
-        // 使用 acquireLatestImage 的阻塞特性，不需要 Thread.sleep
-        // 如果图像还没准备好，会返回 null，我们重试几次
-        var bitmap: Bitmap? = null
-        var attempts = 0
-        val maxAttempts = 10
-        
-        while (bitmap == null && attempts < maxAttempts) {
-            bitmap = try {
-                imageReader.acquireLatestImage()?.use { image ->
-                    val planes = image.planes
-                    val buffer = planes[0].buffer
-                    val pixelStride = planes[0].pixelStride
-                    val rowStride = planes[0].rowStride
-                    val rowPadding = rowStride - pixelStride * image.width
-
-                    val bmp = Bitmap.createBitmap(
-                        image.width + rowPadding / pixelStride,
-                        image.height,
-                        Bitmap.Config.ARGB_8888
-                    )
-                    bmp.copyPixelsFromBuffer(buffer)
-                    bmp
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "转换图片失败", e)
-                null
-            }
-            
-            if (bitmap == null) {
-                attempts++
-                // 短暂等待，让出主线程
-                Thread.sleep(50)
-            }
-        }
-
-        // 清理资源
-        virtualDisplay.release()
-        imageReader.close()
-        mediaProjection.stop()
-
-        return bitmap
-    }
-
-    private fun sendResultBroadcast(ocrResult: OcrResult) {
-        val intent = Intent(ACTION_PLANT_RECOGNIZED).apply {
-            putExtra("raw_text", ocrResult.rawText)
-            putExtra("nickname", ocrResult.nickname)
-            putExtra("mature_time_text", ocrResult.matureTimeText)
-            putExtra("mature_time_millis", ocrResult.matureTimeMillis ?: 0L)
-            putExtra("success", ocrResult.nickname != null && ocrResult.matureTimeMillis != null)
-        }
-        sendBroadcast(intent)
-        Log.d(TAG, "已发送识别结果广播")
     }
 
     private fun finishWithNoAnimation() {
