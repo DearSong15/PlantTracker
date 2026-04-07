@@ -40,12 +40,9 @@
         <activity
             android:name=".ui.screen.ScreenCaptureActivity"
             android:exported="false"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar"
-            android:launchMode="singleInstance"
-            android:excludeFromRecents="true"
-            android:taskAffinity=""
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:windowSoftInputMode="adjustNothing" />
+            android:theme="@style/Theme.PlantTracker"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true" />
 
         <!-- 闹钟广播接收器 -->
         <receiver

@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,36 +35,35 @@ class ScreenCaptureActivity : ComponentActivity() {
     private lateinit var screenCaptureHelper: ScreenCaptureHelper
     private lateinit var ocrHelper: OcrHelper
 
-    private val screenCaptureLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            screenCaptureHelper.setMediaProjection(result.resultCode, result.data!!)
-            // 延迟一下让用户界面稳定
-            lifecycleScope.launch {
-                kotlinx.coroutines.delay(500)
-                performScreenCapture()
-            }
-        } else {
-            Toast.makeText(this, "需要截图权限才能识别", Toast.LENGTH_SHORT).show()
-            finish()
-        }
+    companion object {
+        const val REQUEST_MEDIA_PROJECTION = 1001
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 设置为透明主题，必须在 super.onCreate 之前
-        setTheme(android.R.style.Theme_Translucent_NoTitleBar)
-        
         super.onCreate(savedInstanceState)
         
         screenCaptureHelper = ScreenCaptureHelper(this)
         ocrHelper = OcrHelper()
 
-        // 延迟一下再请求权限，确保 Activity 完全初始化
-        lifecycleScope.launch {
-            kotlinx.coroutines.delay(100)
-            val intent = screenCaptureHelper.createScreenCaptureIntent()
-            screenCaptureLauncher.launch(intent)
+        // 使用传统方式请求权限
+        val intent = screenCaptureHelper.createScreenCaptureIntent()
+        startActivityForResult(intent, REQUEST_MEDIA_PROJECTION)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        
+        if (requestCode == REQUEST_MEDIA_PROJECTION) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                screenCaptureHelper.setMediaProjection(resultCode, data)
+                lifecycleScope.launch {
+                    kotlinx.coroutines.delay(500)
+                    performScreenCapture()
+                }
+            } else {
+                Toast.makeText(this, "需要截图权限才能识别", Toast.LENGTH_SHORT).show()
+                finish()
+            }
         }
     }
 
