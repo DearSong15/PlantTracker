@@ -60,14 +60,17 @@ class ScreenCaptureActivity : ComponentActivity() {
         
         if (requestCode == REQUEST_MEDIA_PROJECTION) {
             if (resultCode == Activity.RESULT_OK && data != null) {
-                // 保存结果，立即开始截图流程
+                // 保存结果
                 mediaProjectionResultCode = resultCode
                 mediaProjectionData = data
                 
-                // 立即开始截图，不等待finish
-                scope.launch {
-                    performCaptureAndFinish()
-                }
+                // 延迟一点再截图，确保Activity完全可见
+                // 这是Android 10+的要求：MediaProjection必须在Activity可见时创建
+                Handler(Looper.getMainLooper()).postDelayed({
+                    scope.launch {
+                        performCaptureAndFinish()
+                    }
+                }, 300)
                 
             } else {
                 // 用户取消
@@ -78,47 +81,49 @@ class ScreenCaptureActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun performCaptureAndFinish() {
+    private fun performCaptureAndFinish() {
         try {
             Log.d(TAG, "开始截图流程...")
             
-            // 使用应用上下文进行截图
-            val bitmap = withContext(Dispatchers.IO) {
-                captureScreenWithMediaProjection()
-            }
+            // 在主线程同步截图（Android 10+要求）
+            val bitmap = captureScreenWithMediaProjection()
 
             if (bitmap != null) {
                 Log.d(TAG, "截图成功，开始OCR识别...")
                 
-                // OCR识别
-                val ocrResult = withContext(Dispatchers.Default) {
-                    ocrHelper.recognizeText(bitmap)
+                // 在后台线程进行OCR
+                scope.launch(Dispatchers.Default) {
+                    val ocrResult = ocrHelper.recognizeText(bitmap)
+                    
+                    Log.d(TAG, "OCR结果: ${ocrResult.nickname}, ${ocrResult.matureTimeText}")
+                    
+                    // 发送广播通知结果
+                    sendResultBroadcast(ocrResult)
+                    
+                    // 回到主线程显示Toast
+                    withContext(Dispatchers.Main) {
+                        val message = if (ocrResult.nickname != null) {
+                            "识别成功: ${ocrResult.nickname}"
+                        } else {
+                            "未能识别植物信息"
+                        }
+                        Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+                        
+                        // 清理资源并关闭
+                        ocrHelper.release()
+                        finishWithNoAnimation()
+                    }
                 }
-                
-                Log.d(TAG, "OCR结果: ${ocrResult.nickname}, ${ocrResult.matureTimeText}")
-                
-                // 发送广播通知结果
-                sendResultBroadcast(ocrResult)
-                
-                // 显示Toast
-                val message = if (ocrResult.nickname != null) {
-                    "识别成功: ${ocrResult.nickname}"
-                } else {
-                    "未能识别植物信息"
-                }
-                Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
-                
             } else {
                 Log.e(TAG, "截图失败")
-                Toast.makeText(applicationContext, "截图失败", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "截图失败", Toast.LENGTH_SHORT).show()
+                ocrHelper.release()
+                finishWithNoAnimation()
             }
         } catch (e: Exception) {
             Log.e(TAG, "截图识别失败", e)
-            Toast.makeText(applicationContext, "识别出错: ${e.message}", Toast.LENGTH_SHORT).show()
-        } finally {
-            // 清理资源
+            Toast.makeText(this, "识别出错: ${e.message}", Toast.LENGTH_SHORT).show()
             ocrHelper.release()
-            // 关闭Activity
             finishWithNoAnimation()
         }
     }
@@ -148,28 +153,39 @@ class ScreenCaptureActivity : ComponentActivity() {
             imageReader.surface, null, null
         )
 
-        // 等待图像准备好
-        Thread.sleep(500)
+        // 使用 acquireLatestImage 的阻塞特性，不需要 Thread.sleep
+        // 如果图像还没准备好，会返回 null，我们重试几次
+        var bitmap: Bitmap? = null
+        var attempts = 0
+        val maxAttempts = 10
+        
+        while (bitmap == null && attempts < maxAttempts) {
+            bitmap = try {
+                imageReader.acquireLatestImage()?.use { image ->
+                    val planes = image.planes
+                    val buffer = planes[0].buffer
+                    val pixelStride = planes[0].pixelStride
+                    val rowStride = planes[0].rowStride
+                    val rowPadding = rowStride - pixelStride * image.width
 
-        val bitmap = try {
-            imageReader.acquireLatestImage()?.use { image ->
-                val planes = image.planes
-                val buffer = planes[0].buffer
-                val pixelStride = planes[0].pixelStride
-                val rowStride = planes[0].rowStride
-                val rowPadding = rowStride - pixelStride * image.width
-
-                val bmp = Bitmap.createBitmap(
-                    image.width + rowPadding / pixelStride,
-                    image.height,
-                    Bitmap.Config.ARGB_8888
-                )
-                bmp.copyPixelsFromBuffer(buffer)
-                bmp
+                    val bmp = Bitmap.createBitmap(
+                        image.width + rowPadding / pixelStride,
+                        image.height,
+                        Bitmap.Config.ARGB_8888
+                    )
+                    bmp.copyPixelsFromBuffer(buffer)
+                    bmp
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "转换图片失败", e)
+                null
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "转换图片失败", e)
-            null
+            
+            if (bitmap == null) {
+                attempts++
+                // 短暂等待，让出主线程
+                Thread.sleep(50)
+            }
         }
 
         // 清理资源
