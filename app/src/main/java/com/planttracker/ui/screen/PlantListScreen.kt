@@ -38,10 +38,26 @@ fun PlantListScreen(
     val plants by viewModel.plants.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var showHarvestedTab by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     // 悬浮窗服务状态
     var isFloatingRunning by remember { mutableStateOf(false) }
+
+    // 倒计时刷新状态，每秒更新一次
+    var tick by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1000)
+            tick++
+        }
+    }
+
+    // 显示设置页面
+    if (showSettings) {
+        SettingsScreen(onBack = { showSettings = false })
+        return
+    }
 
     Scaffold(
         topBar = {
@@ -61,6 +77,14 @@ fun PlantListScreen(
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
                 ),
                 actions = {
+                    // 设置按钮
+                    IconButton(onClick = { showSettings = true }) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "设置",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
                     // 悬浮窗开关
                     IconButton(onClick = {
                         if (isFloatingRunning) {
@@ -252,7 +276,8 @@ fun PlantCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = plant.formatRemaining(),
+                        // 使用 tick 触发重新计算倒计时
+                        text = remember(tick) { plant.formatRemaining() },
                         fontSize = 13.sp,
                         color = if (isMature)
                             MaterialTheme.colorScheme.tertiary
@@ -260,7 +285,7 @@ fun PlantCard(
                             MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "种植于 ${formatDate(plant.plantedAt)}",
+                        text = "记录时间 ${formatDate(plant.plantedAt)} · 预计 ${plant.formatMatureTime()} 收获",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )

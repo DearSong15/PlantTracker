@@ -35,18 +35,27 @@ data class Plant(
     val isMature: Boolean get() = remainingMs <= 0
 
     /**
-     * 格式化剩余时间显示
+     * 格式化剩余时间显示（带秒数）
      */
     fun formatRemaining(): String {
         if (isMature) return "已成熟 🎉"
-        val totalMinutes = remainingMs / 1000 / 60
-        val days = totalMinutes / 60 / 24
-        val hours = (totalMinutes / 60) % 24
-        val minutes = totalMinutes % 60
+        val totalSeconds = remainingMs / 1000
+        val days = totalSeconds / 60 / 60 / 24
+        val hours = (totalSeconds / 60 / 60) % 24
+        val minutes = (totalSeconds / 60) % 60
+        val seconds = totalSeconds % 60
         return when {
-            days > 0 -> "${days}天${hours}时${minutes}分"
-            hours > 0 -> "${hours}时${minutes}分"
-            else -> "${minutes}分钟"
+            days > 0 -> "${days}天${hours}时${minutes}分${seconds}秒"
+            hours > 0 -> "${hours}时${minutes}分${seconds}秒"
+            else -> "${minutes}分${seconds}秒"
         }
+    }
+
+    /**
+     * 格式化预计收获时间（几点几分几秒）
+     */
+    fun formatMatureTime(): String {
+        val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+        return sdf.format(java.util.Date(matureAt))
     }
 }

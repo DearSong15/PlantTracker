@@ -5,10 +5,13 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.media.RingtoneManager
+import android.net.Uri
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.planttracker.R
+import com.planttracker.data.SettingsManager
 import com.planttracker.data.repository.PlantRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +28,9 @@ class AlarmReceiver : BroadcastReceiver() {
     @Inject
     lateinit var plantRepository: PlantRepository
 
+    @Inject
+    lateinit var settingsManager: SettingsManager
+
     override fun onReceive(context: Context, intent: Intent) {
         val matureAt = intent.getLongExtra(EXTRA_MATURE_AT, 0L)
         if (matureAt == 0L) return
@@ -32,12 +38,21 @@ class AlarmReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             val plantNames = plantRepository.getPlantNamesByMatureTime(matureAt)
             if (plantNames.isNotEmpty()) {
-                showMaturityNotification(context, plantNames, matureAt)
+                // 读取设置
+                val soundEnabled = settingsManager.soundEnabled.value
+                val vibrationEnabled = settingsManager.vibrationEnabled.value
+                showMaturityNotification(context, plantNames, matureAt, soundEnabled, vibrationEnabled)
             }
         }
     }
 
-    private fun showMaturityNotification(context: Context, plantNames: List<String>, matureAt: Long) {
+    private fun showMaturityNotification(
+        context: Context,
+        plantNames: List<String>,
+        matureAt: Long,
+        soundEnabled: Boolean,
+        vibrationEnabled: Boolean
+    ) {
         val title = if (plantNames.size == 1) {
             "🌱 ${plantNames[0]} 已成熟！"
         } else {
@@ -49,14 +64,28 @@ class AlarmReceiver : BroadcastReceiver() {
             plantNames.joinToString("、") + " 都已成熟，快去收获吧！"
         }
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_plant)
             .setContentTitle(title)
             .setContentText(content)
             .setStyle(NotificationCompat.BigTextStyle().bigText(content))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
-            .build()
+
+        // 根据设置添加声音
+        if (soundEnabled) {
+            val defaultSoundUri: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            builder.setSound(defaultSoundUri)
+        }
+
+        // 根据设置添加震动
+        if (vibrationEnabled) {
+            builder.setVibrate(longArrayOf(0, 500, 200, 500))
+        } else {
+            builder.setVibrate(null)
+        }
+
+        val notification = builder.build()
 
         try {
             NotificationManagerCompat.from(context)
