@@ -118,9 +118,37 @@ OCR 识别工具类
 - 下拉通知栏查看最近5个将要成熟的植物
 - 点击通知打开应用
 
+## 修复记录
+
+### 2024-04-07: 修复截图识别闪退和跳转问题
+
+**问题：**
+1. 点击"立即开始"后闪退
+2. 截图时自动跳转到APP界面，而不是保持在农场界面
+
+**原因：**
+1. Activity finish() 后 lifecycleScope 被取消，导致截图协程无法执行
+2. Activity 使用了普通主题，不是透明的
+3. 截图流程设计不合理，在Activity内等待截图
+
+**修复方案：**
+1. 使用独立的 CoroutineScope 替代 lifecycleScope，确保Activity销毁后仍能执行截图
+2. 创建透明主题 `Theme.Transparent`，Activity完全无界面
+3. 修改流程：获取权限后立即finish()，延迟2秒后在后台执行截图
+4. 添加 `noHistory="true"` 和 `excludeFromRecents="true"` 确保Activity不进入任务栈
+5. 使用 `overridePendingTransition(0, 0)` 禁用所有动画
+
+**修改的文件：**
+- `app/src/main/res/values/styles.xml` - 新增透明主题
+- `app/src/main/AndroidManifest.xml` - ScreenCaptureActivity使用透明主题
+- `app/src/main/java/com/planttracker/ui/screen/ScreenCaptureActivity.kt` - 完全重写
+- `app/src/main/java/com/planttracker/ui/MainActivity.kt` - 更新广播接收器
+- `app/src/main/java/com/planttracker/service/FloatingWindowService.kt` - 优化启动flag
+
 ## 注意事项
 
 1. 截图识别需要授权"在其他应用上显示"权限
 2. 常驻通知需要通知权限
 3. 截图识别功能需要 Android 5.0 (API 21) 以上
 4. OCR 识别需要联网下载模型（首次使用）
+5. 截图时会有短暂延迟（2秒），让用户有时间回到农场界面

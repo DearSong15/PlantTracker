@@ -36,13 +36,16 @@
             </intent-filter>
         </activity>
 
-        <!-- 截图识别 Activity -->
+        <!-- 截图识别 Activity - 使用透明主题实现无感知后台运行 -->
         <activity
             android:name=".ui.screen.ScreenCaptureActivity"
             android:exported="false"
-            android:theme="@style/Theme.PlantTracker"
-            android:launchMode="singleTask"
-            android:excludeFromRecents="true" />
+            android:theme="@style/Theme.Transparent"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:configChanges="orientation|screenSize" />
 
         <!-- 闹钟广播接收器 -->
         <receiver

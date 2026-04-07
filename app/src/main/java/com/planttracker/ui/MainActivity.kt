@@ -66,13 +66,26 @@ class MainActivity : ComponentActivity() {
     }
     
     // 接收来自截图识别的广播
-    private val addPlantReceiver = object : BroadcastReceiver() {
+    private val plantRecognitionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.planttracker.ADD_PLANT") {
-                val nickname = intent.getStringExtra("nickname") ?: "未知植物"
-                val matureTime = intent.getLongExtra("matureTime", 0L)
-                if (matureTime > 0) {
-                    addPlantFromCapture(nickname, matureTime)
+            when (intent?.action) {
+                // 新的识别结果广播
+                ScreenCaptureActivity.ACTION_PLANT_RECOGNIZED -> {
+                    val success = intent.getBooleanExtra("success", false)
+                    val nickname = intent.getStringExtra("nickname")
+                    val matureTimeMillis = intent.getLongExtra("mature_time_millis", 0L)
+                    
+                    if (success && nickname != null && matureTimeMillis > 0) {
+                        addPlantFromCapture(nickname, matureTimeMillis)
+                    }
+                }
+                // 兼容旧的广播
+                "com.planttracker.ADD_PLANT" -> {
+                    val nickname = intent.getStringExtra("nickname") ?: "未知植物"
+                    val matureTime = intent.getLongExtra("matureTime", 0L)
+                    if (matureTime > 0) {
+                        addPlantFromCapture(nickname, matureTime)
+                    }
                 }
             }
         }
@@ -105,14 +118,14 @@ class MainActivity : ComponentActivity() {
         PlantNotificationService.start(this)
         
         // 注册广播接收器
+        val filter = IntentFilter().apply {
+            addAction(ScreenCaptureActivity.ACTION_PLANT_RECOGNIZED)
+            addAction("com.planttracker.ADD_PLANT")
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(
-                addPlantReceiver,
-                IntentFilter("com.planttracker.ADD_PLANT"),
-                Context.RECEIVER_NOT_EXPORTED
-            )
+            registerReceiver(plantRecognitionReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
-            registerReceiver(addPlantReceiver, IntentFilter("com.planttracker.ADD_PLANT"))
+            registerReceiver(plantRecognitionReceiver, filter)
         }
 
         setContent {
@@ -171,7 +184,7 @@ class MainActivity : ComponentActivity() {
     
     override fun onDestroy() {
         super.onDestroy()
-        unregisterReceiver(addPlantReceiver)
+        unregisterReceiver(plantRecognitionReceiver)
     }
 }
 

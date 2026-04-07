@@ -3,49 +3,59 @@ package com.planttracker.ui.screen
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.lifecycleScope
-import com.planttracker.data.model.Plant
-import com.planttracker.ui.theme.PlantTrackerTheme
-import com.planttracker.ui.viewmodel.PlantViewModel
 import com.planttracker.util.OcrHelper
 import com.planttracker.util.OcrResult
 import com.planttracker.util.ScreenCaptureHelper
-import com.planttracker.util.TimeParser
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * 截图识别 Activity
- * 用于从悬浮窗启动，进行屏幕截图和 OCR 识别
+ * 透明截图Activity
+ * 
+ * 设计目标：
+ * 1. 完全透明，用户看不到界面切换
+ * 2. 点击悬浮窗相机后，先返回农场界面，再自动截图识别
+ * 3. 识别完成后直接关闭，不显示任何UI
+ * 
+ * 流程：
+ * 1. 启动Activity（透明）
+ * 2. 请求截图权限
+ * 3. 用户点击"立即开始"后，Activity立即finish()
+ * 4. 用户回到农场界面
+ * 5. 延迟后自动截图识别（使用独立协程作用域，避免Activity销毁后取消）
+ * 6. 通过广播发送结果
  */
 @AndroidEntryPoint
 class ScreenCaptureActivity : ComponentActivity() {
 
     private lateinit var screenCaptureHelper: ScreenCaptureHelper
     private lateinit var ocrHelper: OcrHelper
+    
+    // 使用独立的协程作用域，确保Activity finish后仍能执行截图
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     companion object {
         const val REQUEST_MEDIA_PROJECTION = 1001
+        const val TAG = "ScreenCaptureActivity"
+        const val ACTION_PLANT_RECOGNIZED = "com.planttracker.PLANT_RECOGNIZED"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 关键：不调用setContentView，保持完全透明
         
         screenCaptureHelper = ScreenCaptureHelper(this)
         ocrHelper = OcrHelper()
 
-        // 使用传统方式请求权限
+        // 请求截图权限
         val intent = screenCaptureHelper.createScreenCaptureIntent()
         startActivityForResult(intent, REQUEST_MEDIA_PROJECTION)
     }
@@ -55,219 +65,93 @@ class ScreenCaptureActivity : ComponentActivity() {
         
         if (requestCode == REQUEST_MEDIA_PROJECTION) {
             if (resultCode == Activity.RESULT_OK && data != null) {
+                // 获取权限成功
                 screenCaptureHelper.setMediaProjection(resultCode, data)
-                lifecycleScope.launch {
-                    kotlinx.coroutines.delay(500)
-                    performScreenCapture()
-                }
-            } else {
-                Toast.makeText(this, "需要截图权限才能识别", Toast.LENGTH_SHORT).show()
+                
+                // 关键：立即finish，让用户回到农场界面
+                // 然后延迟截图，确保用户已经回到农场
                 finish()
+                overridePendingTransition(0, 0)
+                
+                // 延迟2秒后截图（给用户时间回到农场界面）
+                // 使用独立协程作用域，避免Activity销毁后协程被取消
+                Handler(Looper.getMainLooper()).postDelayed({
+                    scope.launch {
+                        performScreenCapture()
+                    }
+                }, 2000)
+                
+            } else {
+                // 用户取消
+                Log.w(TAG, "用户取消截图权限")
+                Toast.makeText(this, "需要截图权限才能识别植物", Toast.LENGTH_SHORT).show()
+                finish()
+                overridePendingTransition(0, 0)
             }
         }
     }
 
-    private fun performScreenCapture() {
-        lifecycleScope.launch {
-            try {
-                // 延迟一下让用户切换到农场应用
-                kotlinx.coroutines.delay(1000)
-                
-                // 截图
-                val bitmap = screenCaptureHelper.captureScreen()
-                if (bitmap == null) {
-                    Toast.makeText(this@ScreenCaptureActivity, "截图失败", Toast.LENGTH_SHORT).show()
-                    finish()
-                    return@launch
-                }
+    private suspend fun performScreenCapture() {
+        try {
+            Log.d(TAG, "开始截图...")
+            
+            // 截图
+            val bitmap = screenCaptureHelper.captureScreen()
 
-                // OCR 识别
+            if (bitmap != null) {
+                Log.d(TAG, "截图成功，开始OCR识别...")
+                
+                // OCR识别
                 val ocrResult = ocrHelper.recognizeText(bitmap)
                 
-                // 显示识别结果对话框
-                showRecognitionResult(ocrResult)
+                Log.d(TAG, "OCR结果: ${ocrResult.nickname}, ${ocrResult.matureTimeText}")
                 
-            } catch (e: Exception) {
-                e.printStackTrace()
-                Toast.makeText(this@ScreenCaptureActivity, "识别出错: ${e.message}", Toast.LENGTH_SHORT).show()
-                finish()
-            } finally {
-                screenCaptureHelper.release()
+                // 发送广播通知结果
+                sendResultBroadcast(ocrResult)
+                
+                // 显示一个短暂的Toast提示
+                Handler(Looper.getMainLooper()).post {
+                    val message = if (ocrResult.nickname != null) {
+                        "识别成功: ${ocrResult.nickname}"
+                    } else {
+                        "未能识别植物信息"
+                    }
+                    Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Log.e(TAG, "截图失败")
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(applicationContext, "截图失败", Toast.LENGTH_SHORT).show()
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "截图识别失败", e)
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(applicationContext, "识别出错: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        } finally {
+            // 清理资源
+            screenCaptureHelper.release()
+            ocrHelper.release()
         }
     }
 
-    private fun showRecognitionResult(ocrResult: OcrResult) {
-        val nickname = ocrResult.nickname ?: "未知植物"
-        val matureTime = ocrResult.matureTimeMillis
-        
-        // 显示识别结果悬浮对话框（不跳转回主界面）
-        setContent {
-            PlantTrackerTheme {
-                RecognitionResultScreen(
-                    ocrResult = ocrResult,
-                    onConfirm = { name, timeMillis ->
-                        // 直接保存到数据库
-                        lifecycleScope.launch {
-                            savePlantToDatabase(name, timeMillis)
-                            Toast.makeText(
-                                this@ScreenCaptureActivity,
-                                "已添加: $name",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            finish()
-                        }
-                    },
-                    onCancel = {
-                        finish()
-                    }
-                )
-            }
-        }
-    }
-    
-    private suspend fun savePlantToDatabase(name: String, matureTimeMillis: Long) {
-        // 通过广播通知主应用添加植物
-        val intent = Intent("com.planttracker.ADD_PLANT").apply {
-            putExtra("nickname", name)
-            putExtra("matureTime", matureTimeMillis)
+    private fun sendResultBroadcast(ocrResult: OcrResult) {
+        val intent = Intent(ACTION_PLANT_RECOGNIZED).apply {
+            putExtra("raw_text", ocrResult.rawText)
+            putExtra("nickname", ocrResult.nickname)
+            putExtra("mature_time_text", ocrResult.matureTimeText)
+            putExtra("mature_time_millis", ocrResult.matureTimeMillis ?: 0L)
+            // 标记识别是否成功
+            putExtra("success", ocrResult.nickname != null && ocrResult.matureTimeMillis != null)
         }
         sendBroadcast(intent)
+        Log.d(TAG, "已发送识别结果广播")
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        screenCaptureHelper.release()
-        ocrHelper.release()
+    override fun finish() {
+        super.finish()
+        // 禁用所有动画，实现无感知
+        overridePendingTransition(0, 0)
     }
-}
-
-@Composable
-fun ScreenCaptureScreen(
-    onRequestCapture: () -> Unit,
-    onFinish: () -> Unit
-) {
-    var showRequest by remember { mutableStateOf(true) }
-
-    if (showRequest) {
-        AlertDialog(
-            onDismissRequest = onFinish,
-            title = { Text("📸 截图识别") },
-            text = {
-                Column {
-                    Text("点击开始后，请切换到农场应用界面，系统会自动截图并识别成熟时间。")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("提示：", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                    Text("• 确保农场应用显示植物信息")
-                    Text("• 确保能看到\"后成熟\"时间")
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    showRequest = false
-                    onRequestCapture()
-                }) {
-                    Text("开始截图")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onFinish) {
-                    Text("取消")
-                }
-            }
-        )
-    } else {
-        // 显示加载中
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("正在识别...")
-            }
-        }
-    }
-}
-
-@Composable
-fun RecognitionResultScreen(
-    ocrResult: OcrResult,
-    onConfirm: (name: String, matureTime: Long) -> Unit,
-    onCancel: () -> Unit
-) {
-    var plantName by remember { mutableStateOf(ocrResult.nickname ?: "") }
-    var timeText by remember { mutableStateOf(ocrResult.matureTimeText ?: "") }
-    
-    val matureTimeMillis = ocrResult.matureTimeMillis
-    val isValid = plantName.isNotBlank() && matureTimeMillis != null
-
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text("🎯 识别结果") },
-        text = {
-            Column {
-                // 植物名称
-                OutlinedTextField(
-                    value = plantName,
-                    onValueChange = { plantName = it },
-                    label = { Text("植物名称") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // 识别到的时间
-                OutlinedTextField(
-                    value = timeText,
-                    onValueChange = { timeText = it },
-                    label = { Text("识别到的时间") },
-                    modifier = Modifier.fillMaxWidth(),
-                    readOnly = true,
-                    supportingText = {
-                        if (matureTimeMillis != null) {
-                            Text(
-                                "✓ 有效时间",
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            Text(
-                                "⚠ 无法识别时间，请手动添加",
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                )
-                
-                // 原始识别文本（可折叠）
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "原始识别文本：",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-                Text(
-                    ocrResult.rawText.take(200),
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    matureTimeMillis?.let { onConfirm(plantName, it) }
-                },
-                enabled = isValid
-            ) {
-                Text("添加到列表")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onCancel) {
-                Text("取消")
-            }
-        }
-    )
 }

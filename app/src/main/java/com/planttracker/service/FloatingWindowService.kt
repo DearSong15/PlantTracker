@@ -143,10 +143,12 @@ class FloatingWindowService : Service() {
                         startActivity(intent)
                     },
                     onCaptureScreen = {
-                        // 启动截图专用 Activity
+                        // 启动截图专用 Activity - 使用透明主题，不跳转回主界面
                         val intent = Intent(this@FloatingWindowService,
                             com.planttracker.ui.screen.ScreenCaptureActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or 
+                                    Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
                         }
                         startActivity(intent)
                     },
