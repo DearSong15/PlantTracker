@@ -169,6 +169,7 @@ fun PlantListScreen(
                 items(plants, key = { it.id }) { plant ->
                     PlantCard(
                         plant = plant,
+                        tick = tick,
                         onHarvest = { viewModel.harvestPlant(plant) },
                         onDelete = { viewModel.deletePlant(plant) }
                     )
@@ -237,6 +238,7 @@ fun StatItem(label: String, value: String, emoji: String) {
 @Composable
 fun PlantCard(
     plant: Plant,
+    tick: Long,
     onHarvest: () -> Unit,
     onDelete: () -> Unit
 ) {
