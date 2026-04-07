@@ -2,8 +2,10 @@ package com.planttracker.ui
 
 import android.Manifest
 import android.app.AlarmManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -58,16 +60,33 @@ class MainActivity : ComponentActivity() {
             val matureTime = result.data?.getLongExtra("matureTime", 0L) ?: 0L
             
             if (matureTime > 0) {
-                lifecycleScope.launch {
-                    viewModel.addPlant(
-                        name = nickname,
-                        emoji = "🌱",
-                        matureAt = System.currentTimeMillis() + matureTime,
-                        note = "通过截图识别添加"
-                    )
-                    Toast.makeText(this@MainActivity, "已添加: $nickname", Toast.LENGTH_SHORT).show()
+                addPlantFromCapture(nickname, matureTime)
+            }
+        }
+    }
+    
+    // 接收来自截图识别的广播
+    private val addPlantReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.planttracker.ADD_PLANT") {
+                val nickname = intent.getStringExtra("nickname") ?: "未知植物"
+                val matureTime = intent.getLongExtra("matureTime", 0L)
+                if (matureTime > 0) {
+                    addPlantFromCapture(nickname, matureTime)
                 }
             }
+        }
+    }
+    
+    private fun addPlantFromCapture(nickname: String, matureTime: Long) {
+        lifecycleScope.launch {
+            viewModel.addPlant(
+                name = nickname,
+                emoji = "🌱",
+                matureAt = System.currentTimeMillis() + matureTime,
+                note = "通过截图识别添加"
+            )
+            Toast.makeText(this@MainActivity, "已添加: $nickname", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -84,6 +103,17 @@ class MainActivity : ComponentActivity() {
 
         // 启动常驻通知服务
         PlantNotificationService.start(this)
+        
+        // 注册广播接收器
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(
+                addPlantReceiver,
+                IntentFilter("com.planttracker.ADD_PLANT"),
+                Context.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            registerReceiver(addPlantReceiver, IntentFilter("com.planttracker.ADD_PLANT"))
+        }
 
         setContent {
             PlantTrackerTheme {
@@ -137,6 +167,11 @@ class MainActivity : ComponentActivity() {
         // 每次回到前台刷新权限状态
         needsNotificationPermission = !NotificationManagerCompat.from(this).areNotificationsEnabled()
         needsOverlayPermission = !Settings.canDrawOverlays(this)
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(addPlantReceiver)
     }
 }
 

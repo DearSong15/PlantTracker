@@ -41,7 +41,11 @@ class ScreenCaptureActivity : ComponentActivity() {
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             screenCaptureHelper.setMediaProjection(result.resultCode, result.data!!)
-            performScreenCapture()
+            // 延迟一下让用户界面稳定
+            lifecycleScope.launch {
+                kotlinx.coroutines.delay(500)
+                performScreenCapture()
+            }
         } else {
             Toast.makeText(this, "需要截图权限才能识别", Toast.LENGTH_SHORT).show()
             finish()
@@ -51,21 +55,15 @@ class ScreenCaptureActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // 设置为透明主题，不显示界面
+        setTheme(android.R.style.Theme_Translucent_NoTitleBar)
+        
         screenCaptureHelper = ScreenCaptureHelper(this)
         ocrHelper = OcrHelper()
 
-        setContent {
-            PlantTrackerTheme {
-                ScreenCaptureScreen(
-                    onRequestCapture = {
-                        // 请求截图权限
-                        val intent = screenCaptureHelper.createScreenCaptureIntent()
-                        screenCaptureLauncher.launch(intent)
-                    },
-                    onFinish = { finish() }
-                )
-            }
-        }
+        // 直接请求截图权限，不显示UI
+        val intent = screenCaptureHelper.createScreenCaptureIntent()
+        screenCaptureLauncher.launch(intent)
     }
 
     private fun performScreenCapture() {
@@ -99,41 +97,41 @@ class ScreenCaptureActivity : ComponentActivity() {
     }
 
     private fun showRecognitionResult(ocrResult: OcrResult) {
-        // 这里会触发重组，显示结果对话框
-        // 实际实现需要在 Compose 中处理
         val nickname = ocrResult.nickname ?: "未知植物"
         val matureTime = ocrResult.matureTimeMillis
         
-        if (matureTime != null) {
-            val intent = Intent().apply {
-                putExtra("nickname", nickname)
-                putExtra("matureTime", matureTime)
-            }
-            setResult(Activity.RESULT_OK, intent)
-        } else {
-            setResult(Activity.RESULT_CANCELED)
-        }
-        
-        // 重新设置内容显示结果
+        // 显示识别结果悬浮对话框（不跳转回主界面）
         setContent {
             PlantTrackerTheme {
                 RecognitionResultScreen(
                     ocrResult = ocrResult,
                     onConfirm = { name, timeMillis ->
-                        val resultIntent = Intent().apply {
-                            putExtra("nickname", name)
-                            putExtra("matureTime", timeMillis)
+                        // 直接保存到数据库
+                        lifecycleScope.launch {
+                            savePlantToDatabase(name, timeMillis)
+                            Toast.makeText(
+                                this@ScreenCaptureActivity,
+                                "已添加: $name",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            finish()
                         }
-                        setResult(Activity.RESULT_OK, resultIntent)
-                        finish()
                     },
                     onCancel = {
-                        setResult(Activity.RESULT_CANCELED)
                         finish()
                     }
                 )
             }
         }
+    }
+    
+    private suspend fun savePlantToDatabase(name: String, matureTimeMillis: Long) {
+        // 通过广播通知主应用添加植物
+        val intent = Intent("com.planttracker.ADD_PLANT").apply {
+            putExtra("nickname", name)
+            putExtra("matureTime", matureTimeMillis)
+        }
+        sendBroadcast(intent)
     }
 
     override fun onDestroy() {

@@ -1,12 +1,17 @@
 package com.planttracker.service
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.IBinder
 import android.view.*
 import android.widget.FrameLayout
+import androidx.core.app.NotificationCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -72,7 +77,34 @@ class FloatingWindowService : Service() {
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        startForegroundService()
         createFloatingWindow()
+    }
+
+    private fun startForegroundService() {
+        val channelId = "floating_window_channel"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "悬浮窗服务",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "保持悬浮窗运行"
+                setShowBadge(false)
+            }
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val notification: Notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("植物追踪器")
+            .setContentText("悬浮窗运行中")
+            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .setOngoing(true)
+            .setSilent(true)
+            .build()
+
+        startForeground(1002, notification)
     }
 
     private fun createFloatingWindow() {
@@ -111,11 +143,10 @@ class FloatingWindowService : Service() {
                         startActivity(intent)
                     },
                     onCaptureScreen = {
-                        // 打开主界面进行截图识别
+                        // 启动截图专用 Activity
                         val intent = Intent(this@FloatingWindowService,
-                            com.planttracker.ui.MainActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            putExtra("action", "capture_screen")
+                            com.planttracker.ui.screen.ScreenCaptureActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                         }
                         startActivity(intent)
                     },
