@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material3.*
@@ -391,7 +392,12 @@ fun FloatingPanel(
                     items(plants, key = { it.id }) { plant ->
                         PlantFloatItem(
                             plant = plant,
-                            onEdit = { showEditDialog = plant }
+                            onEdit = { showEditDialog = plant },
+                            onDelete = {
+                                scope.launch {
+                                    repository.deletePlant(plant)
+                                }
+                            }
                         )
                     }
                 }
@@ -430,7 +436,8 @@ fun FloatingPanel(
 @Composable
 fun PlantFloatItem(
     plant: Plant,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val isMature = plant.isMature
     val bgColor = if (isMature) Color(0xFFFFF3E0) else Color(0xFFE8F5E9)
@@ -441,13 +448,16 @@ fun PlantFloatItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(bgColor)
-            .clickable { onEdit() }
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text = plant.emoji, fontSize = 22.sp)
         Spacer(modifier = Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onEdit() }
+        ) {
             Text(
                 text = plant.name,
                 fontSize = 13.sp,
@@ -463,11 +473,28 @@ fun PlantFloatItem(
         }
         if (isMature) {
             Text("🎉", fontSize = 16.sp)
-        } else {
+        }
+        // 删除按钮
+        IconButton(
+            onClick = onDelete,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Delete,
+                contentDescription = "删除",
+                modifier = Modifier.size(18.dp),
+                tint = Color(0xFFE53935)
+            )
+        }
+        // 编辑按钮
+        IconButton(
+            onClick = onEdit,
+            modifier = Modifier.size(28.dp)
+        ) {
             Icon(
                 imageVector = Icons.Default.Edit,
                 contentDescription = "编辑",
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(18.dp),
                 tint = Color.Gray
             )
         }
@@ -485,11 +512,31 @@ fun EditPlantDialog(
     var timeText by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("编辑植物") },
-        text = {
-            Column {
+    // 使用自定义弹窗而不是 AlertDialog，避免 WindowManager BadTokenException
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.5f))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .width(280.dp)
+                .padding(16.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "编辑植物",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -500,7 +547,7 @@ fun EditPlantDialog(
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = timeText,
-                    onValueChange = { 
+                    onValueChange = {
                         timeText = it
                         error = null
                     },
@@ -510,48 +557,51 @@ fun EditPlantDialog(
                     isError = error != null,
                     supportingText = error?.let { { Text(it, color = Color.Red) } }
                 )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (name.isBlank()) {
-                        error = "请输入植物名称"
-                        return@TextButton
-                    }
-                    if (timeText.isBlank()) {
-                        // 只修改名称，不修改时间
-                        onSave(name, plant.formatRemaining())
-                    } else {
-                        val parsed = TimeParser.parseToMillis(timeText)
-                        if (parsed == null) {
-                            error = "时间格式不正确"
-                        } else {
-                            onSave(name, timeText)
-                        }
-                    }
-                }
-            ) {
-                Text("保存")
-            }
-        },
-        dismissButton = {
-            Row {
-                TextButton(
-                    onClick = onDelete,
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = Color.Red
-                    )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    Text("删除")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                TextButton(onClick = onDismiss) {
-                    Text("取消")
+                    TextButton(
+                        onClick = onDelete,
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = Color.Red
+                        )
+                    ) {
+                        Text("删除")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(onClick = onDismiss) {
+                        Text("取消")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(
+                        onClick = {
+                            if (name.isBlank()) {
+                                error = "请输入植物名称"
+                                return@TextButton
+                            }
+                            if (timeText.isBlank()) {
+                                // 只修改名称，不修改时间
+                                onSave(name, plant.formatRemaining())
+                            } else {
+                                val parsed = TimeParser.parseToMillis(timeText)
+                                if (parsed == null) {
+                                    error = "时间格式不正确"
+                                } else {
+                                    onSave(name, timeText)
+                                }
+                            }
+                        }
+                    ) {
+                        Text("保存")
+                    }
                 }
             }
         }
-    )
+    }
 }
 
 // ── Lifecycle helpers for ComposeView in Service ────────────────────────────
