@@ -67,8 +67,18 @@ fun PlantListScreen(
                             FloatingWindowService.stop(context)
                             isFloatingRunning = false
                         } else {
-                            FloatingWindowService.start(context)
-                            isFloatingRunning = true
+                            // 检查悬浮窗权限
+                            if (!Settings.canDrawOverlays(context)) {
+                                // 没有权限，跳转到设置页面
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    android.net.Uri.parse("package:${context.packageName}")
+                                )
+                                context.startActivity(intent)
+                            } else {
+                                FloatingWindowService.start(context)
+                                isFloatingRunning = true
+                            }
                         }
                     }) {
                         Icon(
