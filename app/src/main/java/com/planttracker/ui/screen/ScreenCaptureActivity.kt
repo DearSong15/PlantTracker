@@ -2,6 +2,8 @@ package com.planttracker.ui.screen
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Bitmap
+import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -10,36 +12,29 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import com.planttracker.util.OcrHelper
 import com.planttracker.util.OcrResult
-import com.planttracker.util.ScreenCaptureHelper
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 透明截图Activity
  * 
- * 设计目标：
- * 1. 完全透明，用户看不到界面切换
- * 2. 点击悬浮窗相机后，先返回农场界面，再自动截图识别
- * 3. 识别完成后直接关闭，不显示任何UI
- * 
- * 流程：
- * 1. 启动Activity（透明）
- * 2. 请求截图权限
- * 3. 用户点击"立即开始"后，Activity立即finish()
- * 4. 用户回到农场界面
- * 5. 延迟后自动截图识别（使用独立协程作用域，避免Activity销毁后取消）
- * 6. 通过广播发送结果
+ * 修复后的设计：
+ * 1. 在Activity存活期间完成截图，不依赖finish后的延迟操作
+ * 2. 截图和OCR在后台快速完成
+ * 3. 完成后立即finish，通过广播发送结果
  */
 @AndroidEntryPoint
 class ScreenCaptureActivity : ComponentActivity() {
 
-    private lateinit var screenCaptureHelper: ScreenCaptureHelper
     private lateinit var ocrHelper: OcrHelper
+    private var mediaProjectionResultCode: Int = 0
+    private var mediaProjectionData: Intent? = null
     
-    // 使用独立的协程作用域，确保Activity finish后仍能执行截图
+    // 使用独立的协程作用域
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     companion object {
@@ -52,11 +47,11 @@ class ScreenCaptureActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // 关键：不调用setContentView，保持完全透明
         
-        screenCaptureHelper = ScreenCaptureHelper(this)
         ocrHelper = OcrHelper()
 
         // 请求截图权限
-        val intent = screenCaptureHelper.createScreenCaptureIntent()
+        val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        val intent = mediaProjectionManager.createScreenCaptureIntent()
         startActivityForResult(intent, REQUEST_MEDIA_PROJECTION)
     }
 
@@ -65,75 +60,124 @@ class ScreenCaptureActivity : ComponentActivity() {
         
         if (requestCode == REQUEST_MEDIA_PROJECTION) {
             if (resultCode == Activity.RESULT_OK && data != null) {
-                // 获取权限成功
-                screenCaptureHelper.setMediaProjection(resultCode, data)
+                // 保存结果，立即开始截图流程
+                mediaProjectionResultCode = resultCode
+                mediaProjectionData = data
                 
-                // 关键：立即finish，让用户回到农场界面
-                // 然后延迟截图，确保用户已经回到农场
-                finish()
-                overridePendingTransition(0, 0)
-                
-                // 延迟2秒后截图（给用户时间回到农场界面）
-                // 使用独立协程作用域，避免Activity销毁后协程被取消
-                Handler(Looper.getMainLooper()).postDelayed({
-                    scope.launch {
-                        performScreenCapture()
-                    }
-                }, 2000)
+                // 立即开始截图，不等待finish
+                scope.launch {
+                    performCaptureAndFinish()
+                }
                 
             } else {
                 // 用户取消
                 Log.w(TAG, "用户取消截图权限")
                 Toast.makeText(this, "需要截图权限才能识别植物", Toast.LENGTH_SHORT).show()
-                finish()
-                overridePendingTransition(0, 0)
+                finishWithNoAnimation()
             }
         }
     }
 
-    private suspend fun performScreenCapture() {
+    private suspend fun performCaptureAndFinish() {
         try {
-            Log.d(TAG, "开始截图...")
+            Log.d(TAG, "开始截图流程...")
             
-            // 截图
-            val bitmap = screenCaptureHelper.captureScreen()
+            // 使用应用上下文进行截图
+            val bitmap = withContext(Dispatchers.IO) {
+                captureScreenWithMediaProjection()
+            }
 
             if (bitmap != null) {
                 Log.d(TAG, "截图成功，开始OCR识别...")
                 
                 // OCR识别
-                val ocrResult = ocrHelper.recognizeText(bitmap)
+                val ocrResult = withContext(Dispatchers.Default) {
+                    ocrHelper.recognizeText(bitmap)
+                }
                 
                 Log.d(TAG, "OCR结果: ${ocrResult.nickname}, ${ocrResult.matureTimeText}")
                 
                 // 发送广播通知结果
                 sendResultBroadcast(ocrResult)
                 
-                // 显示一个短暂的Toast提示
-                Handler(Looper.getMainLooper()).post {
-                    val message = if (ocrResult.nickname != null) {
-                        "识别成功: ${ocrResult.nickname}"
-                    } else {
-                        "未能识别植物信息"
-                    }
-                    Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+                // 显示Toast
+                val message = if (ocrResult.nickname != null) {
+                    "识别成功: ${ocrResult.nickname}"
+                } else {
+                    "未能识别植物信息"
                 }
+                Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+                
             } else {
                 Log.e(TAG, "截图失败")
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(applicationContext, "截图失败", Toast.LENGTH_SHORT).show()
-                }
+                Toast.makeText(applicationContext, "截图失败", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             Log.e(TAG, "截图识别失败", e)
-            Handler(Looper.getMainLooper()).post {
-                Toast.makeText(applicationContext, "识别出错: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+            Toast.makeText(applicationContext, "识别出错: ${e.message}", Toast.LENGTH_SHORT).show()
         } finally {
             // 清理资源
-            screenCaptureHelper.release()
             ocrHelper.release()
+            // 关闭Activity
+            finishWithNoAnimation()
         }
+    }
+
+    private fun captureScreenWithMediaProjection(): Bitmap? {
+        val data = mediaProjectionData ?: return null
+        
+        val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        val mediaProjection = mediaProjectionManager.getMediaProjection(mediaProjectionResultCode, data)
+            ?: return null
+
+        val displayMetrics = resources.displayMetrics
+        val width = displayMetrics.widthPixels
+        val height = displayMetrics.heightPixels
+        val density = displayMetrics.densityDpi
+
+        val imageReader = android.media.ImageReader.newInstance(
+            width, height, 
+            android.graphics.PixelFormat.RGBA_8888, 
+            1
+        )
+
+        val virtualDisplay = mediaProjection.createVirtualDisplay(
+            "ScreenCapture",
+            width, height, density,
+            android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            imageReader.surface, null, null
+        )
+
+        // 等待图像准备好
+        Thread.sleep(500)
+
+        val bitmap = try {
+            imageReader.acquireLatestImage()?.use { image ->
+                val planes = image.planes
+                val buffer = planes[0].buffer
+                val pixelStride = planes[0].pixelStride
+                val rowStride = planes[0].rowStride
+                val rowPadding = rowStride - pixelStride * image.width
+
+                val bmp = Bitmap.createBitmap(
+                    image.width + rowPadding / pixelStride,
+                    image.height,
+                    Bitmap.Config.ARGB_8888
+                )
+                bmp.copyPixelsFromBuffer(buffer)
+                bmp
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "转换图片失败", e)
+            null
+        }
+
+        // 清理资源
+        virtualDisplay.release()
+        imageReader.close()
+        mediaProjection.stop()
+
+        return bitmap
     }
 
     private fun sendResultBroadcast(ocrResult: OcrResult) {
@@ -142,16 +186,19 @@ class ScreenCaptureActivity : ComponentActivity() {
             putExtra("nickname", ocrResult.nickname)
             putExtra("mature_time_text", ocrResult.matureTimeText)
             putExtra("mature_time_millis", ocrResult.matureTimeMillis ?: 0L)
-            // 标记识别是否成功
             putExtra("success", ocrResult.nickname != null && ocrResult.matureTimeMillis != null)
         }
         sendBroadcast(intent)
         Log.d(TAG, "已发送识别结果广播")
     }
 
+    private fun finishWithNoAnimation() {
+        finish()
+        overridePendingTransition(0, 0)
+    }
+
     override fun finish() {
         super.finish()
-        // 禁用所有动画，实现无感知
         overridePendingTransition(0, 0)
     }
 }
