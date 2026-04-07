@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 绿色圆形背景 -->
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M0,0h108v108h-108z" />
+    <!-- 植物图标 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28c-15,3 -18,13 -22,22l3,2c2,-5 6,-8 9,-9c-6,8 -8,18 -9,25h4c1,-8 4,-17 9,-23c1,6 4,12 8,17l3,-2c-4,-5 -7,-11 -8,-17c5,2 12,2 18,0c0,0 -3,-13 -15,-15z" />
+</vector>
