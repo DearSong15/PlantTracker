@@ -89,10 +89,11 @@ class FloatingWindowService : Service() {
             y = 300
         }
 
+        val lifecycleOwner = FloatingWindowLifecycleOwner()
         val composeView = ComposeView(this).apply {
             // 为 ComposeView 提供必要的 Lifecycle/SavedState owner
-            setViewTreeLifecycleOwner(FloatingLifecycleOwner())
-            setViewTreeSavedStateRegistryOwner(FloatingSavedStateOwner())
+            setViewTreeLifecycleOwner(lifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
         }
 
         composeView.setContent {
@@ -493,26 +494,17 @@ fun EditPlantDialog(
 
 // ── Lifecycle helpers for ComposeView in Service ────────────────────────────
 
-class FloatingLifecycleOwner : LifecycleOwner, ViewModelStoreOwner {
+class FloatingWindowLifecycleOwner : LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
     private val lifecycleRegistry = LifecycleRegistry(this)
-    override val lifecycle: Lifecycle = lifecycleRegistry
+    private val savedStateRegistryController = SavedStateRegistryController.create(this)
     override val viewModelStore = ViewModelStore()
 
-    init {
-        lifecycleRegistry.currentState = Lifecycle.State.RESUMED
-    }
-}
-
-class FloatingSavedStateOwner : SavedStateRegistryOwner {
-    private val savedStateRegistryController = SavedStateRegistryController.create(this)
-    override val savedStateRegistry: SavedStateRegistry =
-        savedStateRegistryController.savedStateRegistry
-    override val lifecycle: Lifecycle = LifecycleRegistry(this).also {
-        it.currentState = Lifecycle.State.RESUMED
-    }
+    override val lifecycle: Lifecycle = lifecycleRegistry
+    override val savedStateRegistry: SavedStateRegistry = savedStateRegistryController.savedStateRegistry
 
     init {
         savedStateRegistryController.performAttach()
         savedStateRegistryController.performRestore(null)
+        lifecycleRegistry.currentState = Lifecycle.State.RESUMED
     }
 }
