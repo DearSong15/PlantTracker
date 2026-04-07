@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
 import com.planttracker.data.model.Plant
@@ -244,12 +245,12 @@ fun RecognitionResultScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     "原始识别文本：",
-                    fontSize = androidx.compose.ui.unit.sp(12),
+                    fontSize = sp(12),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
                 Text(
                     ocrResult.rawText.take(200),
-                    fontSize = androidx.compose.ui.unit.sp(10),
+                    fontSize = sp(10),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                 )
             }
