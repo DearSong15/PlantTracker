@@ -53,17 +53,20 @@ class ScreenCaptureActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        
-        // 设置为透明主题，不显示界面
+        // 设置为透明主题，必须在 super.onCreate 之前
         setTheme(android.R.style.Theme_Translucent_NoTitleBar)
+        
+        super.onCreate(savedInstanceState)
         
         screenCaptureHelper = ScreenCaptureHelper(this)
         ocrHelper = OcrHelper()
 
-        // 直接请求截图权限，不显示UI
-        val intent = screenCaptureHelper.createScreenCaptureIntent()
-        screenCaptureLauncher.launch(intent)
+        // 延迟一下再请求权限，确保 Activity 完全初始化
+        lifecycleScope.launch {
+            kotlinx.coroutines.delay(100)
+            val intent = screenCaptureHelper.createScreenCaptureIntent()
+            screenCaptureLauncher.launch(intent)
+        }
     }
 
     private fun performScreenCapture() {
