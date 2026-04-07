@@ -245,12 +245,12 @@ fun RecognitionResultScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     "原始识别文本：",
-                    fontSize = sp(12),
+                    fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
                 Text(
                     ocrResult.rawText.take(200),
-                    fontSize = sp(10),
+                    fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                 )
             }
