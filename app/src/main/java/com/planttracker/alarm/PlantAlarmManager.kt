@@ -5,8 +5,6 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.media.RingtoneManager
-import android.net.Uri
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -64,26 +62,21 @@ class AlarmReceiver : BroadcastReceiver() {
             plantNames.joinToString("、") + " 都已成熟，快去收获吧！"
         }
 
-        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+        // 根据声音+震动设置选择对应渠道
+        val channelId = when {
+            soundEnabled && vibrationEnabled -> CHANNEL_SOUND_VIBRATE
+            soundEnabled && !vibrationEnabled -> CHANNEL_SOUND_ONLY
+            !soundEnabled && vibrationEnabled -> CHANNEL_VIBRATE_ONLY
+            else -> CHANNEL_SILENT
+        }
+
+        val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_plant)
             .setContentTitle(title)
             .setContentText(content)
             .setStyle(NotificationCompat.BigTextStyle().bigText(content))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
-
-        // 根据设置添加声音
-        if (soundEnabled) {
-            val defaultSoundUri: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            builder.setSound(defaultSoundUri)
-        }
-
-        // 根据设置添加震动
-        if (vibrationEnabled) {
-            builder.setVibrate(longArrayOf(0, 500, 200, 500))
-        } else {
-            builder.setVibrate(null)
-        }
 
         val notification = builder.build()
 
@@ -96,7 +89,15 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        const val CHANNEL_ID = "plant_maturity_channel"
+        // 四种渠道，对应四种声音/震动组合
+        const val CHANNEL_SOUND_VIBRATE = "plant_maturity_sound_vibrate"
+        const val CHANNEL_SOUND_ONLY    = "plant_maturity_sound_only"
+        const val CHANNEL_VIBRATE_ONLY  = "plant_maturity_vibrate_only"
+        const val CHANNEL_SILENT        = "plant_maturity_silent"
+
+        /** 已废弃的旧渠道 ID，保留用于删除 */
+        const val CHANNEL_ID_LEGACY     = "plant_maturity_channel"
+
         const val EXTRA_MATURE_AT = "extra_mature_at"
     }
 }

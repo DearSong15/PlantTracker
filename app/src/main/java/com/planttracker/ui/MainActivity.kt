@@ -276,21 +276,70 @@ fun PermissionBanner(
 
 /**
  * 创建 Android 8.0+ 通知渠道
+ * 使用四个渠道分别对应：有声+震动 / 仅声音 / 仅震动 / 静默
+ * 这样用户可以通过设置灵活控制提醒方式
  */
 private fun createNotificationChannel(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val channel = android.app.NotificationChannel(
-            AlarmReceiver.CHANNEL_ID,
-            "植物成熟提醒",
-            android.app.NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "当植物成熟时发送通知提醒"
-            enableVibration(true)
-            enableLights(true)
-        }
-
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE)
             as android.app.NotificationManager
-        manager.createNotificationChannel(channel)
+
+        // 删除旧渠道（避免旧渠道的固定配置干扰）
+        manager.deleteNotificationChannel(AlarmReceiver.CHANNEL_ID_LEGACY)
+
+        val channels = listOf(
+            android.app.NotificationChannel(
+                AlarmReceiver.CHANNEL_SOUND_VIBRATE,
+                "植物成熟提醒（响铃+震动）",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "当植物成熟时发出声音和震动提醒"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 200, 500)
+                setSound(
+                    android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+            },
+            android.app.NotificationChannel(
+                AlarmReceiver.CHANNEL_SOUND_ONLY,
+                "植物成熟提醒（仅响铃）",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "当植物成熟时仅发出声音提醒"
+                enableVibration(false)
+                setSound(
+                    android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+            },
+            android.app.NotificationChannel(
+                AlarmReceiver.CHANNEL_VIBRATE_ONLY,
+                "植物成熟提醒（仅震动）",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "当植物成熟时仅震动提醒"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 200, 500)
+                setSound(null, null)
+            },
+            android.app.NotificationChannel(
+                AlarmReceiver.CHANNEL_SILENT,
+                "植物成熟提醒（静默）",
+                android.app.NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "当植物成熟时静默提醒（仅通知栏）"
+                enableVibration(false)
+                setSound(null, null)
+            }
+        )
+
+        channels.forEach { manager.createNotificationChannel(it) }
     }
 }
