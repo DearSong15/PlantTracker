@@ -53,7 +53,7 @@ class PlantNotificationService : Service() {
     private val notifiedMatureTimes = mutableSetOf<Long>()
 
     /** 上次检测时间，用于精确捕获在两次检测之间成熟的植物 */
-    private var lastCheckTime = System.currentTimeMillis()
+    private var lastCheckTime = System.currentTimeMillis() - 60_000L   // 初始化为1分钟前，确保启动时不遗漏任何刚成熟的植物
 
     override fun onBind(intent: Intent?): IBinder? = null
 

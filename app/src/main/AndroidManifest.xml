@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- 悬浮窗权限（运行时申请） -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
@@ -64,7 +65,7 @@
             android:name=".service.PlantNotificationService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse" />
 
         <!-- 截图前台服务 -->
         <service
