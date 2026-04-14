@@ -295,7 +295,7 @@ private fun createNotificationChannel(context: Context) {
             ).apply {
                 description = "当植物成熟时发出声音和震动提醒"
                 enableVibration(true)
-                vibrationPattern = longArrayOf(0, 500, 200, 500)
+                vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
                 setSound(
                     android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
                     android.media.AudioAttributes.Builder()
@@ -326,7 +326,7 @@ private fun createNotificationChannel(context: Context) {
             ).apply {
                 description = "当植物成熟时仅震动提醒"
                 enableVibration(true)
-                vibrationPattern = longArrayOf(0, 500, 200, 500)
+                vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
                 setSound(null, null)
             },
             android.app.NotificationChannel(

@@ -76,6 +76,8 @@ class PlantNotificationService : Service() {
                     val plants = plantRepository.getActivePlants().first()
                     val now = System.currentTimeMillis()
 
+                    Log.d(TAG, "检测循环: plants.size=${plants.size}, lastCheckTime=$lastCheckTime, now=$now")
+
                     // ── 1. 检测刚刚成熟的植物
                     // 凡是成熟时间在 [lastCheckTime, now] 区间内，且未通知过的植物
                     val justMatured = plants.filter { plant ->
@@ -83,6 +85,8 @@ class PlantNotificationService : Service() {
                         plant.matureAt in lastCheckTime..now &&
                         !notifiedMatureTimes.contains(plant.matureAt)
                     }
+
+                    Log.d(TAG, "检测结果: justMatured.size=${justMatured.size}, justMatured=$justMatured")
 
                     lastCheckTime = now   // 更新检测时间
 
@@ -149,7 +153,7 @@ class PlantNotificationService : Service() {
                     @Suppress("DEPRECATION")
                     getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
                 }
-                val pattern = longArrayOf(0, 500, 200, 500)
+                val pattern = longArrayOf(0, 500, 200, 500, 200, 500)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
                 } else {

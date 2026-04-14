@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -298,11 +300,13 @@ fun FloatingPanel(
     onDrag: (dx: Float, dy: Float) -> Unit
 ) {
     var showEditDialog by remember { mutableStateOf<Plant?>(null) }
+    // 列表折叠状态：true=折叠（只显示标题栏），false=展开（默认）
+    var listCollapsed by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
             .width(300.dp)
-            .heightIn(max = 450.dp)
+            .let { if (listCollapsed) it else it.heightIn(max = 450.dp) }
             .shadow(16.dp, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FBE7))
@@ -330,6 +334,18 @@ fun FloatingPanel(
                     fontSize = 14.sp
                 )
                 Row {
+                    // 折叠/展开列表按钮
+                    IconButton(
+                        onClick = { listCollapsed = !listCollapsed },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            if (listCollapsed) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                            contentDescription = if (listCollapsed) "展开列表" else "折叠列表",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                     // 截图识别按钮
                     IconButton(
                         onClick = onCaptureScreen,
@@ -367,38 +383,40 @@ fun FloatingPanel(
                 }
             }
 
-            // 植物列表
-            if (plants.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(120.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("还没有植物 🪴", fontSize = 14.sp, color = Color.Gray)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = onAddPlant) {
-                            Text("点击添加", color = Color(0xFF4CAF50))
+            // 植物列表（折叠时隐藏）
+            if (!listCollapsed) {
+                if (plants.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("还没有植物 🪴", fontSize = 14.sp, color = Color.Gray)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(onClick = onAddPlant) {
+                                Text("点击添加", color = Color(0xFF4CAF50))
+                            }
                         }
                     }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    items(plants, key = { it.id }) { plant ->
-                        PlantFloatItem(
-                            plant = plant,
-                            onEdit = { showEditDialog = plant },
-                            onDelete = {
-                                scope.launch {
-                                    repository.deletePlant(plant)
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(plants, key = { it.id }) { plant ->
+                            PlantFloatItem(
+                                plant = plant,
+                                onEdit = { showEditDialog = plant },
+                                onDelete = {
+                                    scope.launch {
+                                        repository.deletePlant(plant)
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
