@@ -97,9 +97,10 @@ class MainActivity : ComponentActivity() {
                 name = nickname,
                 emoji = "🌱",
                 matureAt = System.currentTimeMillis() + matureTime,
-                note = "通过截图识别添加"
+                note = "通过截图识别添加",
+                isPendingReview = true  // 新添加的识别植物默认待审核
             )
-            Toast.makeText(this@MainActivity, "已添加: $nickname", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@MainActivity, "已添加: $nickname（待审核）", Toast.LENGTH_SHORT).show()
         }
     }
 

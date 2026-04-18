@@ -27,6 +27,20 @@ class PlantRepository @Inject constructor(
     }
 
     /**
+     * 确认审核通过：取消待审核状态
+     */
+    suspend fun confirmReview(plant: Plant) {
+        plantDao.updatePlant(plant.copy(isPendingReview = false))
+    }
+
+    /**
+     * 批量确认审核通过：取消所有待审核状态
+     */
+    suspend fun confirmAllPendingReviews() {
+        plantDao.confirmAllPendingReviews()
+    }
+
+    /**
      * 获取所有不重复的未来成熟时间（闹钟去重用）
      */
     suspend fun getDistinctFutureMatureTimes(): List<Long> =

@@ -24,14 +24,15 @@ class PlantViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** 添加植物，并同步刷新闹钟 */
-    fun addPlant(name: String, emoji: String, matureAt: Long, note: String = "") {
+    fun addPlant(name: String, emoji: String, matureAt: Long, note: String = "", isPendingReview: Boolean = false) {
         viewModelScope.launch {
             repository.addPlant(
                 Plant(
                     name = name,
                     emoji = emoji,
                     matureAt = matureAt,
-                    note = note
+                    note = note,
+                    isPendingReview = isPendingReview
                 )
             )
             syncAlarms()

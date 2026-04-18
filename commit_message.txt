@@ -1,0 +1,29 @@
+feat: 悬浮球新增待审核植物功能
+
+需求背景：
+- 截图识别添加的植物直接进折叠列表，用户无法先检查识别是否正确
+- 需要人工确认后再正式加入倒计时列表
+
+功能实现：
+1. Plant 模型新增 isPendingReview 字段标记待审核状态
+2. 截图识别添加的植物默认进入待审核状态
+3. 待审核植物显示在列表最顶部（黄色背景 + "待审核"标签）
+4. 折叠列表时，待审核植物仍然可见，方便快速确认
+5. 展开状态下可点击 ✅ 按钮或编辑保存来确认
+6. 点击折叠按钮时，自动批量确认所有待审核植物
+
+数据层修改：
+- Plant.kt: 新增 isPendingReview: Boolean = false
+- PlantDao.kt: 查询按 isPendingReview DESC 排序，新增 confirmAllPendingReviews()
+- PlantRepository.kt: 新增 confirmReview() 和 confirmAllPendingReviews()
+
+业务层修改：
+- PlantViewModel.kt: addPlant() 支持 isPendingReview 参数
+- MainActivity.kt: 识别结果添加时设置 isPendingReview = true
+
+UI层修改：
+- FloatingWindowService.kt: 
+  - FloatingPanel 重构列表显示逻辑，分离待审核/已确认区域
+  - PlantFloatItem 支持待审核样式（黄色背景、标签、确认按钮）
+  - 折叠时保留待审核区域可见，点击直接确认
+  - 编辑保存自动取消待审核状态

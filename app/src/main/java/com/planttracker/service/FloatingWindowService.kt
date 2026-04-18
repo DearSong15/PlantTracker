@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
@@ -302,6 +303,19 @@ fun FloatingPanel(
     var showEditDialog by remember { mutableStateOf<Plant?>(null) }
     // 列表折叠状态：true=折叠（只显示标题栏），false=展开（默认）
     var listCollapsed by remember { mutableStateOf(false) }
+    // 待审核植物数量
+    val pendingCount = plants.count { it.isPendingReview }
+
+    // 折叠列表时，如果有待审核植物，先取消它们的待审核状态
+    fun handleCollapse() {
+        if (pendingCount > 0) {
+            // 批量取消所有待审核状态
+            scope.launch {
+                repository.confirmAllPendingReviews()
+            }
+        }
+        listCollapsed = true
+    }
 
     Card(
         modifier = Modifier
@@ -336,7 +350,15 @@ fun FloatingPanel(
                 Row {
                     // 折叠/展开列表按钮
                     IconButton(
-                        onClick = { listCollapsed = !listCollapsed },
+                        onClick = {
+                            if (listCollapsed) {
+                                // 展开：直接展开
+                                listCollapsed = false
+                            } else {
+                                // 折叠：如果是展开状态，处理待审核后折叠
+                                handleCollapse()
+                            }
+                        },
                         modifier = Modifier.size(28.dp)
                     ) {
                         Icon(
@@ -383,30 +405,110 @@ fun FloatingPanel(
                 }
             }
 
-            // 植物列表（折叠时隐藏）
-            if (!listCollapsed) {
-                if (plants.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(120.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("还没有植物 🪴", fontSize = 14.sp, color = Color.Gray)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = onAddPlant) {
-                                Text("点击添加", color = Color(0xFF4CAF50))
-                            }
+            // 植物列表（折叠时只显示待审核植物，展开时显示全部）
+            if (plants.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("还没有植物 🪴", fontSize = 14.sp, color = Color.Gray)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(onClick = onAddPlant) {
+                            Text("点击添加", color = Color(0xFF4CAF50))
                         }
                     }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(8.dp),
+                }
+            } else {
+                // 待审核植物列表（折叠时也显示）
+                val pendingPlants = plants.filter { it.isPendingReview }
+                val confirmedPlants = plants.filter { !it.isPendingReview }
+
+                // 待审核区域
+                if (pendingPlants.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier.padding(8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        items(plants, key = { it.id }) { plant ->
+                        // 待审核标题
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                tint = Color(0xFFFFC107),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "待审核 (${pendingPlants.size})",
+                                fontSize = 11.sp,
+                                color = Color(0xFFFF8F00),
+                                fontWeight = FontWeight.Medium
+                            )
+                            if (listCollapsed) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "点击确认",
+                                    fontSize = 10.sp,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+
+                        pendingPlants.forEach { plant ->
+                            PlantFloatItem(
+                                plant = plant,
+                                onEdit = {
+                                    if (!listCollapsed) {
+                                        // 展开状态下可以编辑
+                                        showEditDialog = plant
+                                    } else {
+                                        // 折叠状态下点击直接确认审核
+                                        scope.launch {
+                                            repository.confirmReview(plant)
+                                        }
+                                    }
+                                },
+                                onDelete = {
+                                    scope.launch {
+                                        repository.deletePlant(plant)
+                                    }
+                                },
+                                onConfirmReview = if (!listCollapsed) {
+                                    {
+                                        scope.launch {
+                                            repository.confirmReview(plant)
+                                        }
+                                    }
+                                } else null
+                            )
+                        }
+                    }
+                }
+
+                // 已确认植物列表（折叠时隐藏）
+                if (!listCollapsed && confirmedPlants.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier.padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // 已确认标题
+                        if (pendingPlants.isNotEmpty()) {
+                            Text(
+                                text = "已确认",
+                                fontSize = 11.sp,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+
+                        confirmedPlants.forEach { plant ->
                             PlantFloatItem(
                                 plant = plant,
                                 onEdit = { showEditDialog = plant },
@@ -434,7 +536,9 @@ fun FloatingPanel(
                     if (timeMillis != null) {
                         val updatedPlant = plant.copy(
                             name = newName,
-                            matureAt = System.currentTimeMillis() + timeMillis
+                            matureAt = System.currentTimeMillis() + timeMillis,
+                            // 编辑保存后取消待审核状态（视为已确认）
+                            isPendingReview = false
                         )
                         repository.updatePlant(updatedPlant)
                     }
@@ -455,11 +559,21 @@ fun FloatingPanel(
 fun PlantFloatItem(
     plant: Plant,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onConfirmReview: (() -> Unit)? = null  // 确认审核回调
 ) {
     val isMature = plant.isMature
-    val bgColor = if (isMature) Color(0xFFFFF3E0) else Color(0xFFE8F5E9)
-    val borderColor = if (isMature) Color(0xFFFF9800) else Color(0xFF4CAF50)
+    // 待审核植物用黄色背景突出显示
+    val bgColor = when {
+        plant.isPendingReview -> Color(0xFFFFF9C4)  // 浅黄色背景
+        isMature -> Color(0xFFFFF3E0)
+        else -> Color(0xFFE8F5E9)
+    }
+    val borderColor = when {
+        plant.isPendingReview -> Color(0xFFFFC107)  // 黄色边框
+        isMature -> Color(0xFFFF9800)
+        else -> Color(0xFF4CAF50)
+    }
 
     Row(
         modifier = Modifier
@@ -476,13 +590,31 @@ fun PlantFloatItem(
                 .weight(1f)
                 .clickable { onEdit() }
         ) {
-            Text(
-                text = plant.name,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = plant.name,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                // 待审核标签
+                if (plant.isPendingReview) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0xFFFFC107),
+                        modifier = Modifier.padding(start = 2.dp)
+                    ) {
+                        Text(
+                            text = "待审核",
+                            fontSize = 9.sp,
+                            color = Color.Black,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+            }
             Text(
                 text = plant.formatRemaining(),
                 fontSize = 11.sp,
@@ -491,6 +623,20 @@ fun PlantFloatItem(
         }
         if (isMature) {
             Text("🎉", fontSize = 16.sp)
+        }
+        // 待审核植物：显示确认按钮
+        if (plant.isPendingReview && onConfirmReview != null) {
+            IconButton(
+                onClick = onConfirmReview,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "确认",
+                    modifier = Modifier.size(18.dp),
+                    tint = Color(0xFF4CAF50)
+                )
+            }
         }
         // 删除按钮
         IconButton(

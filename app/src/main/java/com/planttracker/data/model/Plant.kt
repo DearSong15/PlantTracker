@@ -12,6 +12,7 @@ import androidx.room.PrimaryKey
  * @param matureAt 成熟时间（毫秒时间戳）
  * @param note 备注
  * @param isHarvested 是否已收获
+ * @param isPendingReview 是否待审核（识别添加的植物默认待审核，用户确认后取消）
  */
 @Entity(tableName = "plants")
 data class Plant(
@@ -22,7 +23,8 @@ data class Plant(
     val plantedAt: Long = System.currentTimeMillis(),
     val matureAt: Long,
     val note: String = "",
-    val isHarvested: Boolean = false
+    val isHarvested: Boolean = false,
+    val isPendingReview: Boolean = false  // 新增：待审核标记
 ) {
     /**
      * 距离成熟还有多少毫秒（负数表示已过期）

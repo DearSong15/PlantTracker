@@ -10,7 +10,7 @@ interface PlantDao {
     @Query("SELECT * FROM plants ORDER BY matureAt ASC")
     fun getAllPlants(): Flow<List<Plant>>
 
-    @Query("SELECT * FROM plants WHERE isHarvested = 0 ORDER BY matureAt ASC")
+    @Query("SELECT * FROM plants WHERE isHarvested = 0 ORDER BY isPendingReview DESC, matureAt ASC")
     fun getActivePlants(): Flow<List<Plant>>
 
     @Query("SELECT * FROM plants WHERE id = :id")
@@ -45,4 +45,10 @@ interface PlantDao {
      */
     @Query("SELECT name FROM plants WHERE matureAt = :matureAt AND isHarvested = 0")
     suspend fun getPlantNamesByMatureTime(matureAt: Long): List<String>
+
+    /**
+     * 批量取消所有待审核状态
+     */
+    @Query("UPDATE plants SET isPendingReview = 0 WHERE isPendingReview = 1")
+    suspend fun confirmAllPendingReviews()
 }
