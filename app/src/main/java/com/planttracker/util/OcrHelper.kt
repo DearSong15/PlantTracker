@@ -1,6 +1,7 @@
 package com.planttracker.util
 
 import android.graphics.Bitmap
+import android.util.Log
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
@@ -41,23 +42,29 @@ class OcrHelper {
             recognizer.process(inputImage)
                 .addOnSuccessListener { visionText ->
                     val rawText = visionText.text
-                    
+
+                    // 打印完整 OCR 原始文本，便于调试
+                    Log.d(TAG, "OCR原始文本:\n$rawText")
+
                     // 提取昵称
                     val nickname = TimeParser.extractNickname(rawText)
-                    
+                    Log.d(TAG, "提取昵称: $nickname")
+
                     // 提取成熟时间
                     val matureTimeResult = TimeParser.extractMatureTimeFromOcr(rawText)
-                    
+                    Log.d(TAG, "提取时间: text=${matureTimeResult?.first}, millis=${matureTimeResult?.second}")
+
                     val result = OcrResult(
                         rawText = rawText,
                         nickname = nickname,
                         matureTimeText = matureTimeResult?.first,
                         matureTimeMillis = matureTimeResult?.second
                     )
-                    
+
                     continuation.resume(result)
                 }
                 .addOnFailureListener { e ->
+                    Log.e(TAG, "OCR识别失败: ${e.message}", e)
                     continuation.resume(
                         OcrResult(
                             rawText = "",
@@ -75,5 +82,9 @@ class OcrHelper {
      */
     fun release() {
         recognizer.close()
+    }
+
+    companion object {
+        private const val TAG = "OcrHelper"
     }
 }
